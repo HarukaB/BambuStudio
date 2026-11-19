@@ -1,0 +1,26 @@
+Subject: [PATCH] Fix Boost.Locale configure with CMake versions that check source_group(TREE)
+
+include/boost/locale.hpp is passed to source_group(TREE include/boost/locale),
+but it is next to that folder, not inside it. CMake used to accept this,
+because the folder path is a string prefix of the file path. CMake versions
+that compare path components stop with "is not a prefix of file".
+
+The file is taken out of the list; it already gets its group on the next line.
+---
+ libs/locale/CMakeLists.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/libs/locale/CMakeLists.txt b/libs/locale/CMakeLists.txt
+index eae5fcf..0e57a05 100644
+--- a/libs/locale/CMakeLists.txt
++++ b/libs/locale/CMakeLists.txt
+@@ -228,6 +228,9 @@ list(FILTER sources_src INCLUDE REGEX "^src/")
+ set(sources_inc ${sources})
+ list(FILTER sources_inc EXCLUDE REGEX "^src/")
+ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src/boost/locale" PREFIX "sources" FILES ${sources_src})
++# boost/locale.hpp is next to the TREE folder, not inside it, and gets its group below.
++# CMake versions that check each file against TREE stop with an error on it.
++list(FILTER sources_inc EXCLUDE REGEX "include/boost/locale\\.hpp$")
+ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/boost/locale" PREFIX "headers" FILES ${sources_inc})
+ source_group("headers" FILES "include/boost/locale.hpp")
+ 
