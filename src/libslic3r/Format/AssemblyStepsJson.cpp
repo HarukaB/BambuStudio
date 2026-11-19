@@ -696,7 +696,7 @@ void AssembleSub::from_json(const nlohmann::json &j)
 
 // ---- AssemblyStepJson ----
 std::string AssemblyStepJson::get_debug_file_path() {
-    return (boost::filesystem::path(Slic3r::data_dir()) / "cache" / "assembly_step.json").string();
+    return (boost::filesystem::path(Slic3r::user_cache_dir()) / "cache" / "assembly_step.json").string();
 }
 
 void AssemblyStepJson::load_pdf_export_params(const nlohmann::json &root)

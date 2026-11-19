@@ -486,10 +486,13 @@ void PresetBundle::reset(bool delete_files)
 void PresetBundle::setup_directories()
 {
     boost::filesystem::path data_dir = boost::filesystem::path(Slic3r::data_dir());
+    // Downloaded updates wait in the cache folder, which is data_dir unless the platform has a separate one.
+    boost::filesystem::path cache_dir = boost::filesystem::path(Slic3r::user_cache_dir());
     //BBS: change directoties by design
     std::initializer_list<boost::filesystem::path> paths = {
         data_dir,
-        data_dir / "ota",
+        cache_dir,
+        cache_dir / "ota",
 		data_dir / PRESET_SYSTEM_DIR,
         data_dir / PRESET_USER_DIR,
         // Store the print/filament/printer presets at the same location as the upstream Slic3r.

@@ -187,9 +187,9 @@ int HMSQuery::load_from_local(const std::string& hms_type, const std::string& de
         return -1;
     }
     std::string filename = get_hms_file(hms_type, HMSQuery::hms_language_code(), dev_id_type);
-    auto hms_folder = (boost::filesystem::path(data_dir()) / "hms");
+    auto hms_folder = (boost::filesystem::path(user_cache_dir()) / "hms");
     if (!fs::exists(hms_folder))
-        fs::create_directory(hms_folder);
+        fs::create_directories(hms_folder);
 
     std::string dir_str = (hms_folder / filename).make_preferred().string();
     std::ifstream json_file(encode_path(dir_str.c_str()));
@@ -232,9 +232,9 @@ int HMSQuery::save_to_local(std::string lang, std::string hms_type, std::string 
         return -1;
     }
     std::string filename = get_hms_file(hms_type,lang, dev_id_type);
-    auto hms_folder = (boost::filesystem::path(data_dir()) / "hms");
+    auto hms_folder = (boost::filesystem::path(user_cache_dir()) / "hms");
     if (!fs::exists(hms_folder))
-        fs::create_directory(hms_folder);
+        fs::create_directories(hms_folder);
     std::string dir_str = (hms_folder / filename).make_preferred().string();
     std::ofstream json_file(encode_path(dir_str.c_str()));
     if (json_file.is_open()) {

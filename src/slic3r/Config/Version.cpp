@@ -306,10 +306,13 @@ Index::const_iterator Index::recommended() const
 
 std::vector<Index> Index::load_db()
 {
-    boost::filesystem::path cache_dir = boost::filesystem::path(Slic3r::data_dir()) / "ota";
+    boost::filesystem::path cache_dir = boost::filesystem::path(Slic3r::user_cache_dir()) / "ota";
 
     std::vector<Index> index_db;
     std::string errors_cummulative;
+    // Nothing downloaded yet, or the system has emptied the cache folder.
+    if (! boost::filesystem::is_directory(cache_dir))
+        return index_db;
 	for (auto &dir_entry : boost::filesystem::directory_iterator(cache_dir))
         if (Slic3r::is_idx_file(dir_entry)) {
         	Index idx;

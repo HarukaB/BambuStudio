@@ -41,9 +41,10 @@ static std::string hms_file_name(const std::string& hms_type, const std::string&
     return (boost::format("hms_%1%_%2%.json") % lang % dev_type).str();
 }
 
+// Dictionaries downloaded from the cloud can be fetched again, so they live in the cache folder.
 static fs::path hms_dir()
 {
-    return fs::path(data_dir()) / "hms";
+    return fs::path(user_cache_dir()) / "hms";
 }
 
 static fs::path hms_cloud_dir() { return hms_dir() / "cloud"; }
@@ -52,15 +53,15 @@ static fs::path hms_local_dir() { return hms_dir() / "local"; }
 // Persist the raw cloud json to disk. Runs on an Http io_thread, never on main.
 static void save_to_local(const std::string& hms_type, const std::string& lang, const std::string& dev_type, const json& save_json)
 {
-    if (data_dir().empty()) {
-        BOOST_LOG_TRIVIAL(error) << "HMS: save_to_local, data_dir() is empty";
+    if (user_cache_dir().empty()) {
+        BOOST_LOG_TRIVIAL(error) << "HMS: save_to_local, user_cache_dir() is empty";
         return;
     }
 
     const fs::path folder = hms_cloud_dir();
     boost::system::error_code ec;
     if (!fs::exists(folder, ec))
-        fs::create_directories(folder, ec); // ensure data_dir()/hms/cloud chain exists
+        fs::create_directories(folder, ec); // ensure user_cache_dir()/hms/cloud chain exists
 
     const std::string path = (folder / hms_file_name(hms_type, lang, dev_type)).make_preferred().string();
     std::ofstream     json_file(encode_path(path.c_str()));
@@ -72,101 +73,22 @@ static void save_to_local(const std::string& hms_type, const std::string& lang, 
     json_file.close();
 }
 
-static bool copy_bundled_dir_to_local(const fs::path& from_dir, const fs::path& to_dir)
+// Earlier versions kept a copy of the bundled dictionaries and images in hms/local. They are
+// read from resources_dir() directly now, so the copy only takes disk space.
+static void remove_legacy_bundled_copy()
 {
-    boost::system::error_code ec;
-    if (!fs::exists(from_dir, ec) || !fs::create_directories(to_dir, ec))
-        return false;
-
-    bool ok = true;
-    for (const auto& entry : fs::directory_iterator(from_dir, ec)) {
-        boost::system::error_code e2; // fresh per entry: a prior failure must not leak into this one
-        const fs::path& source = entry.path();
-        const fs::path  dest   = to_dir / fs::relative(source, from_dir);
-        if (fs::is_regular_file(source, e2)) {
-            if (fs::exists(dest, e2))
-                fs::remove(dest, e2);
-            fs::copy_file(source, dest, e2);
-        } else if (fs::is_directory(source, e2)) {
-            if (!copy_bundled_dir_to_local(source, dest))
-                ok = false;
-        }
-        if (e2)
-            ok = false;
-    }
-    return ok && !ec; // ec set here => directory iteration failed
-}
-
-// Cheap metadata fingerprint of the bundled hms tree (relative name + size + mtime),
-// computed from the read-only source so we can skip re-copying when nothing changed.
-static std::string bundle_fingerprint(const fs::path& dir)
-{
-    uint64_t h = 1469598103934665603ULL; // FNV-1a 64-bit offset basis
-    boost::system::error_code ec;
-    for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
-        const fs::path& p = entry.path();
-        if (!fs::is_regular_file(p, ec))
-            continue;
-        const std::string rel   = fs::relative(p, dir).string();
-        const uint64_t    size  = static_cast<uint64_t>(fs::file_size(p, ec));
-        const uint64_t    mtime = static_cast<uint64_t>(fs::last_write_time(p, ec));
-        for (char c : rel) { h ^= static_cast<uint8_t>(c); h *= 1099511628211ULL; }
-        for (int i = 0; i < 8; ++i) { h ^= static_cast<uint8_t>(size >> (8 * i)); h *= 1099511628211ULL; }
-        for (int i = 0; i < 8; ++i) { h ^= static_cast<uint8_t>(mtime >> (8 * i)); h *= 1099511628211ULL; }
-    }
-    if (ec)
-        return std::string(); // scan failed: force a copy (marker will never match)
-    return (boost::format("%016llx") % static_cast<unsigned long long>(h)).str();
-}
-
-static fs::path hms_marker_path()
-{
-    return hms_local_dir() / ".hms_bundle_ver";
-}
-
-static std::string read_bundle_marker()
-{
-    const fs::path p = hms_marker_path();
-    boost::system::error_code ec;
-    if (!fs::exists(p, ec))
-        return std::string();
-    std::ifstream f(encode_path(p.string().c_str()));
-    std::string   fp;
-    std::getline(f, fp);
-    return fp;
-}
-
-static void write_bundle_marker(const std::string& fp)
-{
-    boost::system::error_code ec;
-    if (!fs::exists(hms_local_dir(), ec))
-        fs::create_directories(hms_local_dir(), ec);
-    std::ofstream f(encode_path(hms_marker_path().string().c_str()), std::ios::trunc);
-    f << fp << std::endl;
-}
-
-static void sync_bundled_hms()
-{
-    if (resources_dir().empty() || data_dir().empty())
+    if (user_cache_dir().empty())
         return;
-    const fs::path from_dir = fs::path(resources_dir()) / "hms";
     boost::system::error_code ec;
-    if (!fs::exists(from_dir, ec))
-        return;
-    const std::string fp = bundle_fingerprint(from_dir);
-    if (fp.empty() || fp == read_bundle_marker())
-        return;
-
-    if (copy_bundled_dir_to_local(from_dir, hms_local_dir()))
-        write_bundle_marker(fp);
+    fs::remove_all(hms_local_dir(), ec);
 }
 
-static std::once_flag s_bundle_sync_once;
+static std::once_flag s_legacy_cleanup_once;
 
 static std::shared_ptr<const json> load_from_local(const std::string& hms_type, const std::string& lang, const std::string& dev_type, std::string& out_ver)
 {
     out_ver.clear();
-    if (data_dir().empty())
+    if (user_cache_dir().empty())
         return nullptr;
 
     const std::string file_name = hms_file_name(hms_type, lang, dev_type);
@@ -195,8 +117,7 @@ static std::shared_ptr<const json> load_from_local(const std::string& hms_type, 
     // Cloud sources win: the last sync is newer than the bundled dictionary.
     if (auto data = try_read(hms_cloud_dir(), ver)) { out_ver = ver; return data; }
     if (auto data = try_read(hms_dir(), ver))       { out_ver = ver; return data; } // legacy pre-split installs
-    // Bundled fallback: the writable copy first, then the read-only resources tree.
-    if (auto data = try_read(hms_local_dir(), ver)) { out_ver = ver; return data; }
+    // Bundled fallback: the dictionaries shipped with the application.
     if (!resources_dir().empty())
         if (auto data = try_read(fs::path(resources_dir()) / "hms", ver)) { out_ver = ver; return data; }
     return nullptr;
@@ -434,7 +355,7 @@ void HMSQueryMgr::ensure_loaded(const std::string& dev_type)
     if (dev_type.empty())
         return;
 
-    start_bundle_sync();
+    remove_legacy_bundled_copy_once();
 
     const std::string lang = hms_language_code();
     const std::string key  = cache_key(dev_type, lang);
@@ -467,9 +388,9 @@ void HMSQueryMgr::seed_from_local(HMSEntry& e, const std::string& dev_type, cons
         e.status = HMSStatus::Ready;
 }
 
-void HMSQueryMgr::start_bundle_sync()
+void HMSQueryMgr::remove_legacy_bundled_copy_once()
 {
-    std::call_once(s_bundle_sync_once, [] { std::thread(sync_bundled_hms).detach(); });
+    std::call_once(s_legacy_cleanup_once, [] { std::thread(remove_legacy_bundled_copy).detach(); });
 }
 
 // MAIN thread: kicks off two parallel perform() legs; no disk IO (versions in-memory).
@@ -578,16 +499,7 @@ wxImage HMSQueryMgr::query_image_from_local(const wxString& image_name)
 
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_local_images.empty()) {
-        const fs::path local_img_dir = hms_local_dir() / "local_image";
         boost::system::error_code ec;
-        if (fs::exists(local_img_dir, ec)) {
-            for (const auto& entry : fs::directory_iterator(local_img_dir)) {
-                const fs::path& image_path = entry.path();
-                const fs::path  rel        = fs::relative(image_path, local_img_dir);
-                m_local_images[wxString::FromUTF8(rel.string())] = wxImage(wxString::FromUTF8(image_path.string()));
-            }
-        }
-
         if (!resources_dir().empty()) {
             const fs::path bundled_img_dir = fs::path(resources_dir()) / "hms" / "local_image";
             if (fs::exists(bundled_img_dir, ec)) {

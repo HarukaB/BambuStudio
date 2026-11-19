@@ -49,6 +49,8 @@
 //#define BBL_HAS_FIRST_PAGE          1
 #define STUDIO_INACTIVE_TIMEOUT     15*60*1000
 #define LOG_FILES_MAX_NUM           30
+// Upper bound for the total size of the files kept in a log folder.
+#define LOG_FILES_MAX_TOTAL_SIZE    (500ull * 1024 * 1024)
 #define TIMEOUT_CONNECT             15
 #define TIMEOUT_RESPONSE            15
 

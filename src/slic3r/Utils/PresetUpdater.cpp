@@ -335,7 +335,7 @@ struct PresetUpdater::priv
 
 //BBS: change directories by design
 PresetUpdater::priv::priv()
-	: cache_path(fs::path(Slic3r::data_dir()) / "ota")
+	: cache_path(fs::path(Slic3r::user_cache_dir()) / "ota")
 	, rsrc_path(fs::path(resources_dir()) / "profiles")
 	, vendor_path(fs::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR)
 	, cancel(false)
@@ -463,6 +463,11 @@ bool PresetUpdater::priv::extract_file(const fs::path &source_path, const fs::pa
 // Remove leftover paritally downloaded files, if any.
 void PresetUpdater::priv::prune_tmps() const
 {
+    // The download folder may be gone: the system is free to empty the cache folder.
+    boost::system::error_code ec;
+    fs::create_directories(cache_path, ec);
+    if (!fs::is_directory(cache_path, ec))
+        return;
     for (auto &dir_entry : fs::directory_iterator(cache_path))
 		if (is_plain_file(dir_entry) && dir_entry.path().extension() == TMP_EXTENSION) {
 			BOOST_LOG_TRIVIAL(debug) << "[BBL Updater]remove old cached files: " << dir_entry.path().string();
@@ -1116,7 +1121,7 @@ void PresetUpdater::priv::sync_tooltip(std::string http_url, std::string languag
     try {
         std::string common_version = "00.00.00.00";
         std::string language_version = "00.00.00.00";
-        fs::path cache_root = fs::path(data_dir()) / "resources/tooltip";
+        fs::path cache_root = fs::path(user_cache_dir()) / "resources/tooltip";
         try {
             auto vf = cache_root / "common" / "version";
             if (fs::exists(vf)) Slic3r::load_string_file(vf, common_version);
@@ -1283,7 +1288,7 @@ void PresetUpdater::priv::sync_printer_config(std::string http_url)
     std::string data_dir_str = data_dir();
     fs::path data_dir_path(data_dir_str);
     auto                    config_folder = data_dir_path / "printers";
-    auto                    cache_folder = data_dir_path / "ota" / "printers";
+    auto                    cache_folder = cache_path / "printers";
 
     try {
         if (fs::exists(config_folder / "version.txt")) {

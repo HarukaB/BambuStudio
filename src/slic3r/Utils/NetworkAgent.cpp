@@ -211,7 +211,7 @@ int NetworkAgent::initialize_network_module(bool using_backup, bool validate_cer
     auto plugin_folder = data_dir_path / "plugins";
 
     if (using_backup) {
-        plugin_folder = plugin_folder/"backup";
+        plugin_folder = boost::filesystem::path(user_cache_dir()) / "plugins" / "backup";
     }
     std::optional<SignerSummary> self_cert_summary, module_cert_summary;
     if (validate_cert)

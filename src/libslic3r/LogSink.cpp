@@ -57,7 +57,7 @@ LogSinkBackend::LogSinkBackend(const std::string& base_path, const LogEncOptions
     : m_log_enc_options(options)
 {
     set_file_name_pattern(base_path);
-    set_rotation_size(100 * 1024 * 1024);
+    set_rotation_size(20 * 1024 * 1024);
     set_auto_newline_mode(boost::log::sinks::disabled_auto_newline);// newline need to be added before encryption
     set_open_mode(std::ios::binary | std::ios::app);
 }

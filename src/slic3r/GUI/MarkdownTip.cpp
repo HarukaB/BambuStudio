@@ -91,7 +91,7 @@ MarkdownTip::~MarkdownTip() { delete _timer; }
 void MarkdownTip::LoadStyle()
 {
     _language = GUI::into_u8(GUI::wxGetApp().current_language_code());
-    fs::path ph(data_dir());
+    fs::path ph(user_cache_dir());
     ph /= "resources/tooltip/common/styled.html";
     _data_dir = true;
     if (!fs::exists(ph)) {
@@ -165,7 +165,7 @@ std::string MarkdownTip::LoadTip(std::string const &tip, std::string const &tool
     wxFile   f;
     if (_data_dir) {
         if (!_language.empty()) {
-            ph = data_dir();
+            ph = user_cache_dir();
             ph /= "resources/tooltip/" + _language +  "/" + tip + ".md";
             file = from_u8(ph.string());
             if (wxFile::Exists(file) && f.Open(file)) {
@@ -174,7 +174,7 @@ std::string MarkdownTip::LoadTip(std::string const &tip, std::string const &tool
                 return content;
             }
         }
-        ph = data_dir();
+        ph = user_cache_dir();
         ph /= "resources/tooltip/common/" + tip + ".md";
         file = from_u8(ph.string());
         if (wxFile::Exists(file) && f.Open(file)) {

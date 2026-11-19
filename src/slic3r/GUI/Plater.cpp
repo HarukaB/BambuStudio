@@ -19966,9 +19966,7 @@ void Plater::priv::install_network_plugin(wxCommandEvent &event)
 
 void Plater::priv::update_plugin_when_launch(wxCommandEvent &event)
 {
-    std::string data_dir_str = data_dir();
-    boost::filesystem::path data_dir_path(data_dir_str);
-    auto cache_folder = data_dir_path / "ota";
+    auto cache_folder = boost::filesystem::path(user_cache_dir()) / "ota";
     std::string changelog_file = cache_folder.string() + "/plugins/network_plugins.json";
 
     UpdatePluginDialog dlg(wxGetApp().mainframe);

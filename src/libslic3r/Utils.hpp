@@ -210,6 +210,17 @@ void set_data_dir(const std::string &path);
 // Return a full path to the GUI resource files.
 const std::string& data_dir();
 
+// Set the folder for data that can be downloaded or generated again (update downloads, HMS dictionaries,
+// tooltips, plugin backup). Leave it unset to keep such data in data_dir().
+void set_user_cache_dir(const std::string &path);
+// Return the folder for data that can be downloaded or generated again; data_dir() unless set.
+// The system may delete its contents while the application is not using them.
+const std::string& user_cache_dir();
+// Set the folder for log files. Leave it unset to keep them in data_dir()/log.
+void set_user_log_dir(const std::string &path);
+// Return the folder for log files; data_dir()/log unless set.
+std::string user_log_dir();
+
 // BBL: true: succeed create or dir exists; false: fail to create
 bool makedir(const std::string path);
 

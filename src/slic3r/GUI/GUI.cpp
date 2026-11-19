@@ -569,7 +569,7 @@ void desktop_open_datadir_folder()
 
 void desktop_open_log_folder()
 {
-    const auto log_folder = (boost::filesystem::path(data_dir()) / "log").make_preferred();
+    const auto log_folder = boost::filesystem::path(user_log_dir()).make_preferred();
 
     if (!boost::filesystem::exists(log_folder))
         boost::filesystem::create_directories(log_folder);

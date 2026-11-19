@@ -84,7 +84,7 @@ public:
     HMSSubscription subscribe_device(const std::string& dev_type, std::function<void()> on_changed);
 
     wxImage query_image_from_local(const wxString& image_name);
-    void start_bundle_sync();
+    void remove_legacy_bundled_copy_once();
 
 private:
     // Cached dictionary for one (dev_type + lang). shared_ptr lets a reader copy the pointer

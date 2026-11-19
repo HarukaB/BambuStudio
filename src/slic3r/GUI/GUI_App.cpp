@@ -1180,6 +1180,55 @@ std::string extract_model_download_url_from_mac(const std::string &protocol_url)
 }
 } // namespace
 
+// Deletes the oldest files of a log folder until at most max_files are left and they take at most
+// max_total_size bytes. The two newest files always stay, as running instances write to them.
+static void s_trim_log_folder(const boost::filesystem::path& log_folder, size_t max_files, boost::uintmax_t max_total_size)
+{
+    namespace bfs = boost::filesystem;
+    struct LogFile
+    {
+        std::time_t      last_write;
+        boost::uintmax_t size;
+        bfs::path        path;
+    };
+
+    boost::system::error_code ec;
+    if (!bfs::is_directory(log_folder, ec))
+        return;
+
+    std::vector<LogFile> files;
+    for (bfs::directory_iterator it(log_folder, ec), end; !ec && it != end; it.increment(ec)) {
+        boost::system::error_code file_ec;
+        if (!bfs::is_regular_file(it->path(), file_ec))
+            continue;
+        const std::time_t last_write = bfs::last_write_time(it->path(), file_ec);
+        if (file_ec)
+            continue;
+        const boost::uintmax_t size = bfs::file_size(it->path(), file_ec);
+        if (file_ec)
+            continue;
+        files.push_back({last_write, size, it->path()});
+    }
+    std::sort(files.begin(), files.end(), [](const LogFile& a, const LogFile& b) { return a.last_write > b.last_write; });
+
+    const size_t     always_kept = 2;
+    boost::uintmax_t kept_size   = 0;
+    size_t           kept        = 0;
+    for (; kept < files.size(); ++kept) {
+        if (kept >= always_kept && (kept >= max_files || kept_size + files[kept].size > max_total_size))
+            break;
+        kept_size += files[kept].size;
+    }
+
+    for (size_t i = kept; i < files.size(); ++i) {
+        const std::string filename = files[i].path.filename().string();
+        BOOST_LOG_TRIVIAL(info) << "delete old log file, filename: " << filename;
+        bfs::remove(files[i].path, ec);
+        if (ec)
+            BOOST_LOG_TRIVIAL(error) << "failed to delete log file: " << filename << ". Error: " << ec.message();
+    }
+}
+
 void GUI_App::post_init()
 {
     assert(initialized());
@@ -1467,39 +1516,14 @@ void GUI_App::post_init()
             mainframe->refresh_plugin_tips();
         });
 
-    // remove old log files over LOG_FILES_MAX_NUM
-    std::string log_addr = data_dir();
-    if (!log_addr.empty()) {
-        auto log_folder = boost::filesystem::path(log_addr) / "log";
-        if (boost::filesystem::exists(log_folder)) {
-           std::vector<std::pair<time_t, std::string>> files_vec;
-           for (auto& it : boost::filesystem::directory_iterator(log_folder)) {
-               auto temp_path = it.path();
-               try {
-                   if (it.status().type() == boost::filesystem::regular_file) {
-                       std::time_t lw_t = boost::filesystem::last_write_time(temp_path) ;
-                       files_vec.push_back({ lw_t, temp_path.filename().string() });
-                   }
-               } catch (const std::exception &) {
-               }
-           }
-           std::sort(files_vec.begin(), files_vec.end(), [](
-               std::pair<time_t, std::string> &a, std::pair<time_t, std::string> &b) {
-               return a.first > b.first;
-           });
-
-           while (files_vec.size() > LOG_FILES_MAX_NUM) {
-               auto full_path = log_folder / boost::filesystem::path(files_vec[files_vec.size() - 1].second);
-               BOOST_LOG_TRIVIAL(info) << "delete log file over " << LOG_FILES_MAX_NUM << ", filename: "<< files_vec[files_vec.size() - 1].second;
-               try {
-                   boost::filesystem::remove(full_path);
-               }
-               catch (const std::exception& ex) {
-                   BOOST_LOG_TRIVIAL(error) << "failed to delete log file: "<< files_vec[files_vec.size() - 1].second << ". Error: " << ex.what();
-               }
-               files_vec.pop_back();
-           }
-        }
+    // remove old log files over LOG_FILES_MAX_NUM or LOG_FILES_MAX_TOTAL_SIZE
+    if (!data_dir().empty()) {
+        const boost::filesystem::path log_folder(user_log_dir());
+        s_trim_log_folder(log_folder, LOG_FILES_MAX_NUM, LOG_FILES_MAX_TOTAL_SIZE);
+        // The network plug-in is given the data folder, so it may leave files in "log" there when ours are elsewhere.
+        const boost::filesystem::path plugin_log_folder = boost::filesystem::path(data_dir()) / "log";
+        if (plugin_log_folder != log_folder)
+            s_trim_log_folder(plugin_log_folder, LOG_FILES_MAX_NUM, LOG_FILES_MAX_TOTAL_SIZE);
     }
     BOOST_LOG_TRIVIAL(info) << "finished post_init";
 #ifdef _WIN32
@@ -1882,14 +1906,15 @@ int GUI_App::install_plugin(std::string name, std::string package_name, InstallP
     boost::filesystem::path data_dir_path(data_dir_str);
     auto plugin_folder = data_dir_path / name;
     //auto plugin_folder = boost::filesystem::path(wxStandardPaths::Get().GetUserDataDir().ToUTF8().data()) / "plugins";
-    auto backup_folder = plugin_folder/"backup";
+    // The backup is a second copy of what is installed, so it goes to the cache folder.
+    auto backup_folder = boost::filesystem::path(user_cache_dir()) / name / "backup";
     if (!boost::filesystem::exists(plugin_folder)) {
         BOOST_LOG_TRIVIAL(info) << "[install_plugin] will create directory plugin under data dir";
         boost::filesystem::create_directory(plugin_folder);
     }
     if (!boost::filesystem::exists(backup_folder)) {
         BOOST_LOG_TRIVIAL(info) << boost::format("will create directory backup under plugin dir");
-        boost::filesystem::create_directory(backup_folder);
+        boost::filesystem::create_directories(backup_folder);
     }
 
     if (m_networking_cancel_update) {
@@ -2081,6 +2106,12 @@ void GUI_App::remove_old_networking_plugins()
             BOOST_LOG_TRIVIAL(error) << "Failed  removing the plugins directory " << PathSanitizer::sanitize(plugin_folder);
         }
     }
+    // The backup of the removed plug-in must go as well, wherever it is kept.
+    const auto backup_folder = boost::filesystem::path(user_cache_dir()) / "plugins" / "backup";
+    boost::system::error_code ec;
+    boost::filesystem::remove_all(backup_folder, ec);
+    if (ec)
+        BOOST_LOG_TRIVIAL(error) << "Failed  removing the plugins backup directory " << PathSanitizer::sanitize(backup_folder);
 }
 
 int GUI_App::updating_bambu_networking()
@@ -2566,6 +2597,53 @@ void GUI_App::init_download_path()
     }
 }
 
+#ifdef __APPLE__
+// Moves what earlier versions wrote under the data folder to the cache and log folders now in use.
+// Runs before logging starts, so failures are not reported: whatever cannot be moved is deleted,
+// as all of it can be downloaded or generated again.
+static void s_move_relocated_data()
+{
+    namespace bfs = boost::filesystem;
+    const bfs::path data_root(data_dir());
+    boost::system::error_code ec;
+
+    const bfs::path cache_root(user_cache_dir());
+    if (cache_root != data_root) {
+        for (const char* sub : {"hms", "ota", "resources/tooltip", "plugins/backup", "cache/assembly_steps", "cache/assembly_step.json",
+                                "cache/fonts.cereal"}) {
+            const bfs::path from = data_root / sub;
+            if (!bfs::exists(from, ec))
+                continue;
+            const bfs::path to = cache_root / sub;
+            if (!bfs::exists(to, ec)) {
+                bfs::create_directories(to.parent_path(), ec);
+                bfs::rename(from, to, ec);
+                if (!ec)
+                    continue;
+            }
+            bfs::remove_all(from, ec);
+        }
+        // Held nothing but the tooltips; a folder with anything else in it is left alone.
+        bfs::remove(data_root / "resources", ec);
+    }
+
+    // Only our own files are moved: the network plug-in is still given the data folder and may use "log" there.
+    const bfs::path old_log_folder = data_root / "log";
+    const bfs::path new_log_folder(user_log_dir());
+    if (new_log_folder != old_log_folder && bfs::is_directory(old_log_folder, ec)) {
+        std::vector<bfs::path> own_files;
+        for (bfs::directory_iterator it(old_log_folder, ec), end; !ec && it != end; it.increment(ec))
+            if (boost::starts_with(it->path().filename().string(), "studio_"))
+                own_files.push_back(it->path());
+        for (const bfs::path& file : own_files) {
+            bfs::rename(file, new_log_folder / file.filename(), ec);
+            if (ec)
+                bfs::remove(file, ec);
+        }
+    }
+}
+#endif // __APPLE__
+
 // see also AppConfig::get_country_code
 static LogEncOptions s_get_log_enc_opts()
 {
@@ -2664,19 +2742,40 @@ void GUI_App::init_app_config()
 #endif
             //BBS create folder if not exists
             boost::filesystem::path data_dir_path(data_dir);
+            // The network plug-in is given the data folder and may write to "log" there, so the folder stays.
             boost::filesystem::path log_dir_path = data_dir_path / "log";
             if (!boost::filesystem::exists(data_dir_path))
                 boost::filesystem::create_directories(data_dir_path);
             if (!boost::filesystem::exists(log_dir_path))
                 boost::filesystem::create_directories(log_dir_path);
             set_data_dir(data_dir);
+#ifdef __APPLE__
+            {
+                // Data that can be downloaded or generated again goes to ~/Library/Caches, which backups
+                // skip and the system may empty, and log files go to ~/Library/Logs. A data folder given
+                // on the command line keeps everything in one place.
+                const boost::filesystem::path library = boost::filesystem::path(wxFileName::GetHomeDir().ToUTF8().data()) / "Library";
+                const boost::filesystem::path app_folder = data_dir_path.filename();
+                boost::system::error_code ec;
+                const boost::filesystem::path cache_dir_path = library / "Caches" / app_folder;
+                boost::filesystem::create_directories(cache_dir_path, ec);
+                if (boost::filesystem::is_directory(cache_dir_path, ec))
+                    set_user_cache_dir(cache_dir_path.string());
+                const boost::filesystem::path user_log_dir_path = library / "Logs" / app_folder;
+                boost::filesystem::create_directories(user_log_dir_path, ec);
+                if (boost::filesystem::is_directory(user_log_dir_path, ec))
+                    set_user_log_dir(user_log_dir_path.string());
+                s_move_relocated_data();
+            }
+#endif
+            const std::string log_dir_str = user_log_dir();
 #if defined(__WINDOWS__)
             // Change current dirtory of application
-            if (_chdir(encode_path((data_dir + "/log").c_str()).c_str()) != 0) {
+            if (_chdir(encode_path(log_dir_str.c_str()).c_str()) != 0) {
                 // Logging is not set up yet, so there is nowhere to report this; the working directory stays as it was.
             }
 #else
-            if (chdir(encode_path((data_dir + "/log").c_str()).c_str()) != 0) {
+            if (chdir(encode_path(log_dir_str.c_str()).c_str()) != 0) {
                 // Logging is not set up yet, so there is nowhere to report this; the working directory stays as it was.
             }
 #endif
@@ -2686,7 +2785,7 @@ void GUI_App::init_app_config()
 
     // start log here
     const auto& enc_opts = s_get_log_enc_opts();
-    const std::string log_dir = (boost::filesystem::path(data_dir()) / "log").string();
+    const std::string log_dir = user_log_dir();
 
 #if !BBL_RELEASE_TO_PUBLIC  && defined(__WINDOWS__)
     set_log_path_and_level(log_dir, 5, enc_opts);
@@ -3191,7 +3290,7 @@ bool GUI_App::on_init_inner()
     wxLog::SetActiveTarget(new wxBoostLog());
     set_severity_level(app_config->get("severity_level"));
 
-    hms_query_mgr->start_bundle_sync();
+    hms_query_mgr->remove_legacy_bundled_copy_once();
 
     //set preset text
     auto preset_path = fs::path(Slic3r::data_dir()) / PRESET_SYSTEM_DIR;
@@ -3830,7 +3929,7 @@ void GUI_App::copy_network_if_available()
     std::string data_dir_str = data_dir();
     fs::path data_dir_path(data_dir_str);
     auto plugin_folder = data_dir_path / "plugins";
-    auto cache_folder = data_dir_path / "ota" / "plugins";
+    auto cache_folder = fs::path(user_cache_dir()) / "ota" / "plugins";
     //std::string changelog_file = cache_folder.string() + "/network_plugins.json";
 #if defined(_MSC_VER) || defined(_WIN32)
     const char* library_ext = ".dll";

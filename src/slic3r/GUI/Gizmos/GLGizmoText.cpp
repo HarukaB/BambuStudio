@@ -3896,13 +3896,15 @@ std::string concat(std::vector<wxString> data)
     return ss.str();
 }
 boost::filesystem::path get_fontlist_cache_path() {
-    return boost::filesystem::path(data_dir()) / "cache" / "fonts.cereal";
+    return boost::filesystem::path(user_cache_dir()) / "cache" / "fonts.cereal";
 }
 bool store(const CurFacenames &facenames)
 {
     std::string             cache_path = get_fontlist_cache_path().string();
     boost::filesystem::path path(cache_path);
-    if (!boost::filesystem::exists(path.parent_path())) { boost::filesystem::create_directory(path.parent_path()); }
+    // The cache folder may have been emptied by the system, so its parents may be missing as well.
+    boost::system::error_code ec;
+    boost::filesystem::create_directories(path.parent_path(), ec);
     boost::nowide::ofstream       file(cache_path, std::ios::binary);
     ::cereal::BinaryOutputArchive archive(file);
     std::vector<wxString>         good;

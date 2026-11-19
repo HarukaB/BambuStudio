@@ -2947,8 +2947,9 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
         if (Slic3r::get_logging_level() >= level_string_to_boost("trace")) {
             BOOST_LOG_TRIVIAL(trace) << KV(log_key::dev_id, get_dev_id()) << "origin playload=" << j_pre.dump(1);
         } else {
+            // One record per printer report is too much for the default level.
             if (j_pre.contains("print")) {
-                BOOST_LOG_TRIVIAL(info) << KV(log_key::dev_id, get_dev_id()) << "print playload=" << j_pre["print"];
+                BOOST_LOG_TRIVIAL(debug) << KV(log_key::dev_id, get_dev_id()) << "print playload=" << j_pre["print"];
             };
         }
 #endif
@@ -4696,12 +4697,12 @@ void MachineObject::parse_new_info(json print)
         return;
     }
 
-    BOOST_LOG_TRIVIAL(info) << "using new print data for parsing";
+    BOOST_LOG_TRIVIAL(debug) << "using new print data for parsing";
 
     /*cfg*/
     std::string cfg = print["cfg"].get<std::string>();
 
-    BOOST_LOG_TRIVIAL(info) << "new print data cfg = " << cfg;
+    BOOST_LOG_TRIVIAL(debug) << "new print data cfg = " << cfg;
 
     if(!cfg.empty()){
         if (camera_resolution_hold_count > 0) camera_resolution_hold_count--;
@@ -4764,7 +4765,7 @@ void MachineObject::parse_new_info(json print)
 
     /*fun*/
     std::string fun = print["fun"].get<std::string>();
-    BOOST_LOG_TRIVIAL(info) << "new print data fun = " << fun;
+    BOOST_LOG_TRIVIAL(debug) << "new print data fun = " << fun;
 
     if (!fun.empty()) {
         is_support_agora    = get_flag_bits(fun, 1);
@@ -4794,7 +4795,7 @@ void MachineObject::parse_new_info(json print)
     std::string fun2;
     if (print.contains("fun2") && print["fun2"].is_string()) {
         fun2 = print["fun2"].get<std::string>();
-        BOOST_LOG_TRIVIAL(info) << "new print data fun2 = " << fun2;
+        BOOST_LOG_TRIVIAL(debug) << "new print data fun2 = " << fun2;
     }
 
     // fun2 may have infinite length, use get_flag_bits_no_border
@@ -4832,7 +4833,7 @@ void MachineObject::parse_new_info(json print)
     /*aux*/
     std::string aux = print["aux"].get<std::string>();
 
-    BOOST_LOG_TRIVIAL(info) << "new print data aux = " << aux;
+    BOOST_LOG_TRIVIAL(debug) << "new print data aux = " << aux;
 
     if (!aux.empty()) {
         m_storage->set_sdcard_state(get_flag_bits(aux, 12, 2));
@@ -4842,7 +4843,7 @@ void MachineObject::parse_new_info(json print)
     /*stat*/
     std::string stat = print["stat"].get<std::string>();
 
-    BOOST_LOG_TRIVIAL(info) << "new print data stat = " << stat;
+    BOOST_LOG_TRIVIAL(debug) << "new print data stat = " << stat;
 
     if (!stat.empty()) {
         camera_recording = get_flag_bits(stat, 7);

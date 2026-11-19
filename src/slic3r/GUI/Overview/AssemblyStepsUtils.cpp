@@ -4188,7 +4188,7 @@ void AssemblyStepsUtils::on_export_pdf(std::string path)
     if (!out_dir.empty() && !fs::exists(out_dir))
         fs::create_directories(out_dir);
 
-    const fs::path cache_dir = fs::path(Slic3r::data_dir()) / "cache" / "assembly_steps";
+    const fs::path cache_dir = fs::path(Slic3r::user_cache_dir()) / "cache" / "assembly_steps";
     boost::system::error_code ec;
     if (fs::exists(cache_dir, ec)) {
         fs::directory_iterator end;
@@ -4247,7 +4247,7 @@ void AssemblyStepsUtils::on_export_markdown(std::string path)
     if (!out_dir.empty() && !fs::exists(out_dir))
         fs::create_directories(out_dir);
 
-    const fs::path cache_dir = fs::path(Slic3r::data_dir()) / "cache" / "assembly_steps";
+    const fs::path cache_dir = fs::path(Slic3r::user_cache_dir()) / "cache" / "assembly_steps";
     boost::system::error_code ec;
     if (fs::exists(cache_dir, ec)) {
         fs::directory_iterator end;

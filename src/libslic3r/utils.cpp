@@ -178,6 +178,32 @@ const std::string& data_dir()
     return g_data_dir;
 }
 
+static std::string g_user_cache_dir;
+
+void set_user_cache_dir(const std::string &dir)
+{
+    g_user_cache_dir = dir;
+}
+
+const std::string& user_cache_dir()
+{
+    return g_user_cache_dir.empty() ? g_data_dir : g_user_cache_dir;
+}
+
+static std::string g_user_log_dir;
+
+void set_user_log_dir(const std::string &dir)
+{
+    g_user_log_dir = dir;
+}
+
+std::string user_log_dir()
+{
+    if (!g_user_log_dir.empty())
+        return g_user_log_dir;
+    return (boost::filesystem::path(g_data_dir) / "log").string();
+}
+
 std::string custom_shapes_dir()
 {
     return (boost::filesystem::path(g_data_dir) / "shapes").string();

@@ -278,7 +278,7 @@ ReleaseNoteDialog::ReleaseNoteDialog(Plater *plater /*= nullptr*/)
         e.Skip();
     });
 
-    fs::path ph(data_dir());
+    fs::path ph(user_cache_dir());
     ph /= "resources/tooltip/releasenote.html";
     if (!fs::exists(ph)) {
         ph = resources_dir();
@@ -518,7 +518,7 @@ UpdateVersionDialog::UpdateVersionDialog(wxWindow *parent)
     m_vebview_release_note->SetMinSize(wxSize(FromDIP(560), FromDIP(430)));
     //m_vebview_release_note->SetMaxSize(wxSize(FromDIP(560), FromDIP(430)));
 
-	fs::path ph(data_dir());
+	fs::path ph(user_cache_dir());
 	ph /= "resources/tooltip/releasenote.html";
 	if (!fs::exists(ph)) {
 		ph = resources_dir();
