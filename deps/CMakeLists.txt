@@ -174,7 +174,11 @@ if (MSVC)
     endif ()
 elseif (APPLE)
     message("OS X SDK Path: ${CMAKE_OSX_SYSROOT}")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version" FORCE)
+    # Keep a version given on the command line (BuildMac.sh -t). It used to be overwritten here, and
+    # libc++ of recent SDKs warns that 10.15 is no longer supported, which fails deps built with -Werror.
+    if (NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version" FORCE)
+    endif ()
     if (CMAKE_OSX_DEPLOYMENT_TARGET)
         set(DEP_OSX_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
         message("OS X Deployment Target: ${DEP_OSX_TARGET}")
